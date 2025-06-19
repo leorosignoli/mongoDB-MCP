@@ -5,7 +5,27 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  McpError,
+  ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
+
+import { MongoDBConnection } from './mongodb/connection.js';
+import { getConnectionConfig, validateConnectionConfig } from './mongodb/config.js';
+import { executeQuery } from './tools/query.js';
+import { executeAggregation } from './tools/aggregate.js';
+import { listCollections, getIndexes } from './tools/collections.js';
+import { listDatabases, getCollectionStats } from './tools/databases.js';
+import { explainQuery } from './tools/explain.js';
+import {
+  QueryArgsSchema,
+  AggregateArgsSchema,
+  ListCollectionsArgsSchema,
+  GetIndexesArgsSchema,
+  ExplainArgsSchema,
+  StatsArgsSchema,
+} from './types/index.js';
+
+let mongoConnection: MongoDBConnection | null = null;
 
 const server = new Server(
   {
@@ -24,33 +44,51 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'query',
-        description: 'Execute MongoDB queries',
+        description: 'Execute MongoDB find queries with safety restrictions',
         inputSchema: {
           type: 'object',
           properties: {
             database: { type: 'string', description: 'Database name' },
             collection: { type: 'string', description: 'Collection name' },
             query: { type: 'object', description: 'MongoDB query object' },
+            options: {
+              type: 'object',
+              description: 'Query options (limit, skip, sort, projection)',
+              properties: {
+                limit: { type: 'number', maximum: 1000 },
+                skip: { type: 'number', minimum: 0 },
+                sort: { type: 'object' },
+                projection: { type: 'object' },
+              },
+            },
           },
           required: ['database', 'collection', 'query'],
         },
       },
       {
         name: 'aggregate',
-        description: 'Run aggregation pipelines',
+        description: 'Run aggregation pipelines (read-only operations)',
         inputSchema: {
           type: 'object',
           properties: {
             database: { type: 'string', description: 'Database name' },
             collection: { type: 'string', description: 'Collection name' },
             pipeline: { type: 'array', description: 'Aggregation pipeline' },
+            options: {
+              type: 'object',
+              description: 'Aggregation options',
+              properties: {
+                batchSize: { type: 'number', maximum: 1000 },
+                maxTimeMS: { type: 'number', maximum: 60000 },
+              },
+            },
           },
           required: ['database', 'collection', 'pipeline'],
         },
       },
       {
         name: 'listCollections',
-        description: 'Show all collections',
+        description: 'List all collections in a database',
         inputSchema: {
           type: 'object',
           properties: {
@@ -61,7 +99,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'listDatabases',
-        description: 'Show all databases',
+        description: 'List all accessible databases',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -69,7 +107,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'getIndexes',
-        description: 'View collection indexes',
+        description: 'View indexes for a collection',
         inputSchema: {
           type: 'object',
           properties: {
@@ -81,27 +119,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'explain',
-        description: 'Query performance analysis',
+        description: 'Analyze query performance and execution plan',
         inputSchema: {
           type: 'object',
           properties: {
             database: { type: 'string', description: 'Database name' },
             collection: { type: 'string', description: 'Collection name' },
             query: { type: 'object', description: 'MongoDB query object' },
+            options: {
+              type: 'object',
+              description: 'Explain options',
+              properties: {
+                verbosity: {
+                  type: 'string',
+                  enum: ['queryPlanner', 'executionStats', 'allPlansExecution'],
+                },
+                sort: { type: 'object' },
+                projection: { type: 'object' },
+                limit: { type: 'number' },
+                skip: { type: 'number' },
+              },
+            },
           },
           required: ['database', 'collection', 'query'],
         },
       },
       {
         name: 'stats',
-        description: 'Collection/database statistics',
+        description: 'Get collection or database statistics',
         inputSchema: {
           type: 'object',
           properties: {
             database: { type: 'string', description: 'Database name' },
             collection: {
               type: 'string',
-              description: 'Collection name (optional for db stats)',
+              description: 'Collection name (optional for database stats)',
             },
           },
           required: ['database'],
@@ -114,28 +166,130 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async request => {
   const { name, arguments: args } = request.params;
 
-  switch (name) {
-    case 'query':
-    case 'aggregate':
-    case 'listCollections':
-    case 'listDatabases':
-    case 'getIndexes':
-    case 'explain':
-    case 'stats':
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Tool ${name} not yet implemented. Arguments: ${JSON.stringify(
-              args
-            )}`,
-          },
-        ],
-      };
-    default:
-      throw new Error(`Unknown tool: ${name}`);
+  try {
+    if (!mongoConnection) {
+      const config = getConnectionConfig();
+      validateConnectionConfig(config);
+      mongoConnection = new MongoDBConnection(config);
+    }
+
+    switch (name) {
+      case 'query': {
+        const validatedArgs = QueryArgsSchema.parse(args);
+        const result = await executeQuery(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'aggregate': {
+        const validatedArgs = AggregateArgsSchema.parse(args);
+        const result = await executeAggregation(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'listCollections': {
+        const validatedArgs = ListCollectionsArgsSchema.parse(args);
+        const result = await listCollections(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'listDatabases': {
+        const result = await listDatabases(mongoConnection);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'getIndexes': {
+        const validatedArgs = GetIndexesArgsSchema.parse(args);
+        const result = await getIndexes(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'explain': {
+        const validatedArgs = ExplainArgsSchema.parse(args);
+        const result = await explainQuery(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'stats': {
+        const validatedArgs = StatsArgsSchema.parse(args);
+        const result = await getCollectionStats(mongoConnection, validatedArgs);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      default:
+        throw new McpError(
+          ErrorCode.MethodNotFound,
+          `Unknown tool: ${name}`
+        );
+    }
+  } catch (error) {
+    if (error instanceof McpError) {
+      throw error;
+    }
+    
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Tool execution failed: ${error}`
+    );
   }
 });
+
+async function cleanup(): Promise<void> {
+  if (mongoConnection) {
+    await mongoConnection.disconnect();
+  }
+}
+
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
 
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
@@ -143,6 +297,8 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  process.stderr.write(`Fatal error: ${error}\n`);
-  process.exit(1);
+  cleanup().finally(() => {
+    process.stderr.write(`Fatal error: ${error}\n`);
+    process.exit(1);
+  });
 });
