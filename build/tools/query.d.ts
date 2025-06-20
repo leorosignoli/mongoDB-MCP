@@ -1,12 +1,12 @@
 import { Document } from 'mongodb';
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import { QueryArgs } from '../types/index.js';
-export declare function executeQuery(connection: MongoDBConnection, args: QueryArgs): Promise<{
+export declare function executeQuery(connection: EnhancedMongoDBConnection, args: QueryArgs): Promise<{
     documents: Document[];
     count: number;
     metadata: any;
 }>;
-export declare function executeDistinct(connection: MongoDBConnection, args: {
+export declare function executeDistinct(connection: EnhancedMongoDBConnection, args: {
     database: string;
     collection: string;
     field: string;
@@ -15,7 +15,7 @@ export declare function executeDistinct(connection: MongoDBConnection, args: {
     values: any[];
     metadata: any;
 }>;
-export declare function executeCount(connection: MongoDBConnection, args: {
+export declare function executeCount(connection: EnhancedMongoDBConnection, args: {
     database: string;
     collection: string;
     query?: Document;

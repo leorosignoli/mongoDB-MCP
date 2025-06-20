@@ -1,9 +1,9 @@
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import { sanitizeDatabaseName } from '../mongodb/safety.js';
 import { StatsArgs } from '../types/index.js';
 
 export async function listDatabases(
-  connection: MongoDBConnection
+  connection: EnhancedMongoDBConnection
 ): Promise<{ databases: any[]; metadata: any }> {
   try {
     await connection.ensureConnection();
@@ -40,7 +40,7 @@ export async function listDatabases(
 }
 
 export async function getDatabaseStats(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: { database: string }
 ): Promise<{ stats: any; metadata: any }> {
   try {
@@ -81,7 +81,7 @@ export async function getDatabaseStats(
 }
 
 export async function getCollectionStats(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: StatsArgs
 ): Promise<{ stats: any; metadata: any }> {
   try {
@@ -94,7 +94,6 @@ export async function getCollectionStats(
     }
 
     const db = connection.getDatabase(databaseName);
-    const collection = db.collection(args.collection);
 
     const stats = await db.command({ collStats: args.collection });
     
@@ -131,7 +130,7 @@ export async function getCollectionStats(
 }
 
 export async function getServerStatus(
-  connection: MongoDBConnection
+  connection: EnhancedMongoDBConnection
 ): Promise<{ status: any; metadata: any }> {
   try {
     await connection.ensureConnection();

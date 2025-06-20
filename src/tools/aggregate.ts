@@ -1,5 +1,5 @@
 import { Document } from 'mongodb';
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import {
   sanitizeAggregationPipeline,
   sanitizeCollectionName,
@@ -8,7 +8,7 @@ import {
 import { AggregateArgs } from '../types/index.js';
 
 export async function executeAggregation(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: AggregateArgs
 ): Promise<{ documents: Document[]; count: number; metadata: any }> {
   try {

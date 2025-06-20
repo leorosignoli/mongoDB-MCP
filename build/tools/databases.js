@@ -69,7 +69,6 @@ export async function getCollectionStats(connection, args) {
             return getDatabaseStats(connection, { database: databaseName });
         }
         const db = connection.getDatabase(databaseName);
-        const collection = db.collection(args.collection);
         const stats = await db.command({ collStats: args.collection });
         const formattedStats = {
             namespace: stats.ns,

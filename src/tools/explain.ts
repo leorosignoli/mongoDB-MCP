@@ -1,5 +1,5 @@
 import { Document } from 'mongodb';
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import {
   sanitizeQuery,
   sanitizeCollectionName,
@@ -8,7 +8,7 @@ import {
 import { ExplainArgs } from '../types/index.js';
 
 export async function explainQuery(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: ExplainArgs
 ): Promise<{ explanation: any; metadata: any }> {
   try {
@@ -84,7 +84,7 @@ export async function explainQuery(
 }
 
 export async function explainAggregation(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: {
     database: string;
     collection: string;

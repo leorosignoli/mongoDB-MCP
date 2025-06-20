@@ -9,7 +9,7 @@ import {
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { MongoDBConnection } from './mongodb/connection.js';
+import { EnhancedMongoDBConnection } from './mongodb/enhanced-connection.js';
 import { getConnectionConfig, validateConnectionConfig } from './mongodb/config.js';
 import { executeQuery } from './tools/query.js';
 import { executeAggregation } from './tools/aggregate.js';
@@ -25,7 +25,7 @@ import {
   StatsArgsSchema,
 } from './types/index.js';
 
-let mongoConnection: MongoDBConnection | null = null;
+let mongoConnection: EnhancedMongoDBConnection | null = null;
 
 const server = new Server(
   {
@@ -170,7 +170,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     if (!mongoConnection) {
       const config = getConnectionConfig();
       validateConnectionConfig(config);
-      mongoConnection = new MongoDBConnection(config);
+      mongoConnection = new EnhancedMongoDBConnection(config);
     }
 
     switch (name) {

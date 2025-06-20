@@ -21,7 +21,10 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "limiter": "^2.1.0",
     "mongodb": "^6.0.0",
+    "node-cache": "^5.1.2",
+    "winston": "^3.11.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {

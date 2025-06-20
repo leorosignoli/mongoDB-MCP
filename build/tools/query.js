@@ -1,5 +1,13 @@
 import { sanitizeQuery, sanitizeCollectionName, sanitizeDatabaseName, validateLimit, validateSkip, } from '../mongodb/safety.js';
+import { withTimeout } from '../performance/timeout.js';
 export async function executeQuery(connection, args) {
+    const cache = connection.getCache();
+    const performanceMonitor = connection.getPerformanceMonitor();
+    const logger = connection.getLogger();
+    const auditLogger = connection.getAuditLogger();
+    await connection.checkRateLimit('query');
+    const operationId = performanceMonitor.startOperation('query', args.database, args.collection);
+    const startTime = Date.now();
     try {
         await connection.ensureConnection();
         const databaseName = sanitizeDatabaseName(args.database);
@@ -9,35 +17,118 @@ export async function executeQuery(connection, args) {
         const skip = validateSkip(args.options?.skip);
         const sort = args.options?.sort || {};
         const projection = args.options?.projection || {};
-        const db = connection.getDatabase(databaseName);
-        const collection = db.collection(collectionName);
-        const cursor = collection
-            .find(query, { projection })
-            .sort(sort)
-            .skip(skip)
-            .limit(limit);
-        const documents = await cursor.toArray();
-        const totalCount = await collection.countDocuments(query);
-        const metadata = {
-            database: databaseName,
-            collection: collectionName,
-            query,
-            limit,
-            skip,
-            sort,
-            projection,
-            returnedCount: documents.length,
-            totalCount,
-            hasMore: totalCount > skip + documents.length,
-        };
-        return {
-            documents,
-            count: documents.length,
-            metadata,
-        };
+        const cacheKey = cache.generateKey('query', databaseName, collectionName, query, {
+            limit, skip, sort, projection
+        });
+        let result = cache.get(cacheKey);
+        let cacheHit = false;
+        if (result) {
+            cacheHit = true;
+            logger.debug('Query cache hit', { operationId, cacheKey });
+        }
+        else {
+            const timeout = 30000;
+            const db = connection.getDatabase(databaseName);
+            const collection = db.collection(collectionName);
+            const queryPromise = async () => {
+                const cursor = collection
+                    .find(query, { projection })
+                    .sort(sort)
+                    .skip(skip)
+                    .limit(limit);
+                const [documents, totalCount] = await Promise.all([
+                    cursor.toArray(),
+                    collection.countDocuments(query)
+                ]);
+                return { documents, totalCount };
+            };
+            const { documents, totalCount } = await withTimeout(queryPromise(), timeout, `Query timeout after ${timeout}ms`);
+            result = {
+                documents,
+                count: documents.length,
+                metadata: {
+                    database: databaseName,
+                    collection: collectionName,
+                    query,
+                    limit,
+                    skip,
+                    sort,
+                    projection,
+                    returnedCount: documents.length,
+                    totalCount,
+                    hasMore: totalCount > skip + documents.length,
+                    operationId,
+                    cacheHit: false,
+                    executionTime: Date.now() - startTime,
+                },
+            };
+            cache.set(cacheKey, result, 300);
+            logger.debug('Query executed and cached', { operationId, cacheKey });
+        }
+        const duration = Date.now() - startTime;
+        const isSlowQuery = performanceMonitor.isSlowQuery(duration);
+        performanceMonitor.endOperation(operationId, true, {
+            documentsReturned: result.documents.length,
+            cacheHit,
+        });
+        auditLogger.logToolExecution({
+            action: 'QUERY_EXECUTE',
+            resource: {
+                type: 'query',
+                database: databaseName,
+                collection: collectionName
+            },
+            metadata: {
+                operationId,
+                toolName: 'query',
+                success: true,
+                resultCount: result.documents.length,
+                cacheHit,
+                duration,
+                query: query,
+                options: { limit, skip, sort, projection },
+            },
+        });
+        if (isSlowQuery) {
+            auditLogger.logPerformanceEvent(operationId, 'query', duration, {
+                database: databaseName,
+                collection: collectionName,
+                resultCount: result.documents.length,
+                cacheHit,
+                slow: true,
+            });
+        }
+        return result;
     }
     catch (error) {
-        throw new Error(`Query execution failed: ${error}`);
+        const duration = Date.now() - startTime;
+        const errorMessage = error.message;
+        performanceMonitor.endOperation(operationId, false, {
+            error: errorMessage
+        });
+        auditLogger.logToolExecution({
+            action: 'QUERY_EXECUTE',
+            resource: {
+                type: 'query',
+                database: args.database,
+                collection: args.collection
+            },
+            metadata: {
+                operationId,
+                toolName: 'query',
+                success: false,
+                error: errorMessage,
+                duration,
+                query: args.query,
+                options: args.options,
+            },
+        });
+        logger.error('Query execution failed', error, {
+            operationId,
+            database: args.database,
+            collection: args.collection,
+        });
+        throw new Error(`Query execution failed: ${errorMessage}`);
     }
 }
 export async function executeDistinct(connection, args) {

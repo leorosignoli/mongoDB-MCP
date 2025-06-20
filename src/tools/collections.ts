@@ -1,9 +1,9 @@
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import { sanitizeDatabaseName, sanitizeCollectionName } from '../mongodb/safety.js';
 import { ListCollectionsArgs, GetIndexesArgs } from '../types/index.js';
 
 export async function listCollections(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: ListCollectionsArgs
 ): Promise<{ collections: any[]; metadata: any }> {
   try {
@@ -42,7 +42,7 @@ export async function listCollections(
 }
 
 export async function getCollectionInfo(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: { database: string; collection: string }
 ): Promise<{ info: any; metadata: any }> {
   try {
@@ -102,7 +102,7 @@ export async function getCollectionInfo(
 }
 
 export async function getIndexes(
-  connection: MongoDBConnection,
+  connection: EnhancedMongoDBConnection,
   args: GetIndexesArgs
 ): Promise<{ indexes: any[]; metadata: any }> {
   try {

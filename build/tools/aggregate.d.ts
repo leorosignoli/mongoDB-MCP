@@ -1,7 +1,7 @@
 import { Document } from 'mongodb';
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import { AggregateArgs } from '../types/index.js';
-export declare function executeAggregation(connection: MongoDBConnection, args: AggregateArgs): Promise<{
+export declare function executeAggregation(connection: EnhancedMongoDBConnection, args: AggregateArgs): Promise<{
     documents: Document[];
     count: number;
     metadata: any;

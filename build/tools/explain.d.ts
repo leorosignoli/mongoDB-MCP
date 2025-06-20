@@ -1,11 +1,11 @@
 import { Document } from 'mongodb';
-import { MongoDBConnection } from '../mongodb/connection.js';
+import { EnhancedMongoDBConnection } from '../mongodb/enhanced-connection.js';
 import { ExplainArgs } from '../types/index.js';
-export declare function explainQuery(connection: MongoDBConnection, args: ExplainArgs): Promise<{
+export declare function explainQuery(connection: EnhancedMongoDBConnection, args: ExplainArgs): Promise<{
     explanation: any;
     metadata: any;
 }>;
-export declare function explainAggregation(connection: MongoDBConnection, args: {
+export declare function explainAggregation(connection: EnhancedMongoDBConnection, args: {
     database: string;
     collection: string;
     pipeline: Document[];
